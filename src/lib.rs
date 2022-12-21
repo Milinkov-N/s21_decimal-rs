@@ -1,11 +1,14 @@
-mod bits;
-
 use bits::*;
+use bitstr::*;
+
+mod bits;
+mod bitstr;
+mod ops;
 
 const EXP_MASK: i32 = 0b00000000111111110000000000000000;
-const BITSTR_LEN: usize = 96;
 
-enum Sign {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Sign {
     Positive,
     Negative,
 }
@@ -16,7 +19,13 @@ pub struct S21Decimal {
 }
 
 impl S21Decimal {
-    pub fn is_negative(&self) -> bool {
+    pub fn new(integer: i32, scale: i32) -> Self {
+        let mut decimal = Self::from(integer);
+        decimal.set_scale(scale);
+
+        decimal
+    }
+    pub const fn is_negative(&self) -> bool {
         get_bit(self.bits[3], 31) == 1
     }
 
@@ -24,7 +33,7 @@ impl S21Decimal {
         set_bit(&mut self.bits[3], 31);
     }
 
-    fn sign(&self) -> Sign {
+    const fn sign(&self) -> Sign {
         if get_bit(self.bits[3], 31) == 1 {
             Sign::Negative
         } else {
@@ -32,8 +41,33 @@ impl S21Decimal {
         }
     }
 
-    pub fn scale(&self) -> i32 {
+    fn set_sign(&mut self, sign: Sign) {
+        match sign {
+            Sign::Positive => unset_bit(&mut self.bits[3], 31),
+            Sign::Negative => set_bit(&mut self.bits[3], 31),
+        }
+    }
+
+    pub const fn scale(&self) -> i32 {
         (self.bits[3] & EXP_MASK) >> 16
+    }
+
+    fn set_scale(&mut self, exp: i32) {
+        let sign = self.sign();
+        self.bits[3] = exp << 16;
+        self.set_sign(sign);
+    }
+
+    pub fn normalize(&mut self, scale: u32) {
+        let mut bstr = BitStr::from(&self.bits[0..3]);
+
+        bstr.pow(scale);
+        bstr.scale = scale as i32;
+        let normalized: S21Decimal = bstr.into();
+
+        self.set_sign(normalized.sign());
+        self.set_scale(normalized.scale());
+        self.bits = normalized.bits;
     }
 }
 
@@ -77,132 +111,9 @@ impl From<BitStr> for S21Decimal {
             }
         }
 
+        decimal.set_sign(bstr.sign);
+        decimal.set_scale(bstr.scale);
         decimal
-    }
-}
-
-impl std::ops::Add for S21Decimal {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let sign = self.sign();
-        let scale = self.scale();
-        let bitstr = BitStr::from(self);
-
-        let rhs_sign = rhs.sign();
-        let rhs_scale = rhs.scale();
-        let rhs_bitstr = BitStr::from(rhs);
-
-        use std::cmp::Ordering::{Greater, Less};
-        match scale.cmp(&rhs_scale) {
-            Less => match rhs_sign {
-                Sign::Positive => todo!("Exponent normalization"),
-                Sign::Negative => todo!("Exponent normalization"),
-            },
-            Greater => match sign {
-                Sign::Positive => todo!("Exponent normalization"),
-                Sign::Negative => todo!("Exponent normalization"),
-            },
-            _ => (),
-        }
-
-        todo!()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct BitStr {
-    bytes: [u8; BITSTR_LEN],
-}
-
-impl BitStr {
-    const LENGTH: usize = BITSTR_LEN;
-}
-
-impl Default for BitStr {
-    fn default() -> Self {
-        Self { bytes: [48; 96] }
-    }
-}
-
-impl From<S21Decimal> for BitStr {
-    fn from(decimal: S21Decimal) -> Self {
-        decimal.bits[0..3]
-            .iter()
-            .map(|i| i.bits())
-            .reduce(|mut acc, i| {
-                acc.push_str(&i);
-                acc
-            })
-            .unwrap()
-            .into()
-    }
-}
-
-impl From<String> for BitStr {
-    fn from(s: String) -> Self {
-        let mut bitstr = BitStr::default();
-
-        if s.len() == Self::LENGTH {
-            s.as_bytes()
-                .iter()
-                .enumerate()
-                .for_each(|(i, byte)| bitstr.bytes[i] = *byte);
-        } else if s.len() < Self::LENGTH {
-            let diff = Self::LENGTH - s.len();
-            s.as_bytes()
-                .iter()
-                .enumerate()
-                .for_each(|(i, byte)| bitstr.bytes[i + diff] = *byte);
-        }
-
-        bitstr
-    }
-}
-
-impl From<&str> for BitStr {
-    fn from(s: &str) -> Self {
-        let mut bitstr = BitStr::default();
-
-        if s.len() == Self::LENGTH {
-            s.as_bytes()
-                .iter()
-                .enumerate()
-                .for_each(|(i, byte)| bitstr.bytes[i] = *byte);
-        } else if s.len() < Self::LENGTH {
-            let diff = Self::LENGTH - s.len();
-            s.as_bytes()
-                .iter()
-                .enumerate()
-                .for_each(|(i, byte)| bitstr.bytes[i + diff] = *byte);
-        }
-
-        bitstr
-    }
-}
-
-impl std::ops::Add for BitStr {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let mut result = BitStr::default();
-        let mut carry = 0;
-
-        self.bytes.iter().enumerate().rev().for_each(|(i, bit)| {
-            let bit = bit - 48;
-            let rhs_bit = rhs.bytes[i] - 48;
-
-            if bit ^ rhs_bit ^ carry == 1 {
-                result.bytes[i] = '1' as u8;
-                if bit + rhs_bit + carry < 3 {
-                    carry = 0;
-                }
-            } else if bit == 1 && rhs_bit == 1 {
-                carry = 1;
-            }
-        });
-
-        result
     }
 }
 
@@ -244,13 +155,5 @@ mod tests {
         let decimal = S21Decimal::default();
 
         assert_eq!(BitStr::default(), decimal.into());
-    }
-
-    #[test]
-    fn add_bitstr() {
-        let left = BitStr::from("10");
-        let right = BitStr::from("01");
-        let expecting = BitStr::from("11");
-        assert_eq!(expecting, left + right);
     }
 }

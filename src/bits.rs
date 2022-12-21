@@ -7,6 +7,7 @@ impl Bits for i32 {
         (0..32)
             .into_iter()
             .map(|i| char::from(get_bit(*self, i) as u8 + 48))
+            .rev()
             .collect::<String>()
     }
 }
