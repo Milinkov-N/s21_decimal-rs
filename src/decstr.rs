@@ -66,10 +66,14 @@ impl DecStr {
     }
 
     pub fn banker_round(&self) -> Self {
-        match (self.bytes[Self::LENGTH - 1] - 48) % 2 {
-            0 => self.cut_fractional(),
-            _ => self.add(&DecStr::from("1")),
+        if self.scale > 0 {
+            return match (self.bytes[Self::LENGTH - self.scale as usize - 1] - 48) % 2 {
+                0 => self.cut_fractional(),
+                _ => self.cut_fractional().add(&DecStr::from("1")),
+            };
         }
+
+        self.clone()
     }
 
     pub fn len(&self) -> usize {
@@ -123,7 +127,6 @@ impl DecStr {
         let mut rhs = rhs.clone();
         let mut carry = 0;
 
-        println!("rescale = {}", rhs.scale - dest.scale);
         match dest.scale.cmp(&rhs.scale) {
             Less => *dest = dest.rescale(rhs.scale - dest.scale),
             Equal => (),
@@ -216,8 +219,12 @@ impl From<&str> for DecStr {
         }
 
         if let Some(scale) = point {
-            panic!("There is a bug, remove it!");
-            result.scale = (filtered.len() + 1 - scale) as i32;
+            result.scale = (s
+                .split_at(scale + 1)
+                .1
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .count()) as i32;
         }
 
         result
