@@ -1,5 +1,5 @@
 use bits::*;
-use bitstr::*;
+pub use bitstr::*;
 
 mod bits;
 mod bitstr;
@@ -25,6 +25,11 @@ impl S21Decimal {
 
         decimal
     }
+
+    pub fn from_str_radix(str: &str, radix: u32) -> Self {
+        BitStr::from_str_radix(str, radix).into()
+    }
+
     pub const fn is_negative(&self) -> bool {
         get_bit(self.bits[3], 31) == 1
     }
@@ -68,6 +73,20 @@ impl S21Decimal {
         self.set_sign(normalized.sign());
         self.set_scale(normalized.scale());
         self.bits = normalized.bits;
+    }
+
+    pub fn is_max(&self) -> bool {
+        match (self.sign(), self.bits) {
+            (Sign::Positive, [-1, -1, -1, _]) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_min(&self) -> bool {
+        match (self.sign(), self.bits) {
+            (Sign::Negative, [-1, -1, -1, _]) => true,
+            _ => false,
+        }
     }
 }
 
@@ -155,5 +174,12 @@ mod tests {
         let decimal = S21Decimal::default();
 
         assert_eq!(BitStr::default(), decimal.into());
+    }
+
+    #[test]
+    fn decimal_from_str_radix_base_10_num_45() {
+        let decimal = S21Decimal::from_str_radix("45", 10);
+
+        assert_eq!(S21Decimal::from(45), decimal);
     }
 }

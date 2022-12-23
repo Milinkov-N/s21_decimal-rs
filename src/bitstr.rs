@@ -3,7 +3,7 @@ use super::{get_bit, Bits, S21Decimal, Sign};
 const BITSTR_LEN: usize = 96;
 
 #[derive(PartialEq, Clone)]
-pub(crate) struct BitStr {
+pub struct BitStr {
     pub sign: Sign,
     pub scale: i32,
     pub bytes: [u8; BITSTR_LEN],
@@ -21,7 +21,49 @@ impl BitStr {
     }
 
     pub fn from_str_radix(str: &str, radix: u32) -> Self {
-        todo!()
+        let mut result = BitStr::default();
+        let point = str.find('.');
+
+        match radix {
+            2 => BitStr::from(str),
+            10 => {
+                let iter = str.chars().peekable();
+
+                let mut size = iter
+                    .clone()
+                    .filter(|ch| ch.is_ascii_digit() || ch.is_ascii_hexdigit())
+                    .count();
+
+                iter.filter(|ch| ch.is_ascii_digit() || ch.is_ascii_hexdigit())
+                    .enumerate()
+                    .for_each(|(i, ch)| {
+                        result = result.clone() + BitStr::from(ch);
+                        if i < size - 1 {
+                            result.pow(1);
+                        }
+                    });
+
+                if str.starts_with("-") {
+                    result.sign = Sign::Negative;
+                    size += 1;
+                }
+
+                if let Some(scale) = point {
+                    result.scale = (size - scale) as i32;
+                }
+
+                result
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn all_zeroes(&self) -> bool {
+        self.bytes.iter().take_while(|&&b| b == 48).count() == Self::LENGTH
+    }
+
+    pub fn all_ones(&self) -> bool {
+        self.bytes.iter().take_while(|&&b| b == 49).count() == Self::LENGTH
     }
 
     pub fn shift(&mut self, offset: u32) {
@@ -108,7 +150,9 @@ impl BitStr {
                     right.invert(BitStr::LENGTH - msbi);
                 }
 
-                // result.sign = Sign::Negative;
+                if self.sign == Sign::Negative {
+                    result.sign = Sign::Negative;
+                }
             }
 
             _ => {
@@ -122,9 +166,11 @@ impl BitStr {
         let lbs_add_one = left + BitStr::from("1");
         let sum = right.add_upto(&lbs_add_one, BitStr::LENGTH - right.msbi().unwrap());
 
-        result.scale = sum.scale;
-        result.bytes = sum.bytes;
+        if !sum.all_zeroes() {
+            result.scale = self.scale;
+        }
 
+        result.bytes = sum.bytes;
         result
     }
 
@@ -146,7 +192,11 @@ impl BitStr {
             }
         });
 
-        result.scale = self.scale;
+        if !result.all_zeroes() {
+            result.scale = self.scale;
+        }
+
+        result.sign = self.sign.clone();
         result
     }
 }
@@ -166,29 +216,13 @@ impl std::ops::Add for BitStr {
 
     fn add(self, rhs: Self) -> Self::Output {
         use Sign::*;
+
         match (&self.sign, &rhs.sign) {
-            (Positive, Negative) | (Negative, Positive) | (Negative, Negative) => {
-                self.add_negative(&rhs)
-            }
-            (_, _) => self.add_positive(&rhs),
+            (Positive, Positive) | (Negative, Negative) => self.add_positive(&rhs),
+            (_, _) => self.add_negative(&rhs),
         }
     }
 }
-
-// impl std::ops::Add for &BitStr {
-//     type Output = BitStr;
-
-//     fn add(self, rhs: Self) -> Self::Output {
-//         use Sign::*;
-//         match (&self.sign, &rhs.sign) {
-//             (Positive, Negative) | (Negative, Positive) | (Negative, Negative) => {
-//                 self.add_negative(&rhs)
-//             }
-
-//             (_, _) => self.add_positive(&rhs),
-//         }
-//     }
-// }
 
 macro_rules! bitstr_from_decimal {
     ($type:ty) => {
@@ -287,6 +321,16 @@ impl From<&str> for BitStr {
     }
 }
 
+impl From<char> for BitStr {
+    fn from(ch: char) -> Self {
+        match ch.to_ascii_lowercase() {
+            '0'..='9' => BitStr::from(format!("{:b}", ch as u8 - 48)),
+            'a'..='f' => BitStr::from(format!("{:b}", ch as u8 - 87)),
+            _ => panic!("char is not in range of '0'..='9' || 'a'..='f'"),
+        }
+    }
+}
+
 impl From<BitStr> for String {
     fn from(b: BitStr) -> Self {
         b.bytes.iter().fold(String::new(), |mut acc, byte| {
@@ -320,10 +364,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bitstr_from_str_radix_10() {
+    fn bitstr_from_char() {
+        let test_cases = ['0', '1', '2', '5', '9', 'a', 'f'];
+        let expecting = [
+            BitStr::default(),
+            BitStr::from("1"),
+            BitStr::from("10"),
+            BitStr::from("101"),
+            BitStr::from("1001"),
+            BitStr::from("1010"),
+            BitStr::from("1111"),
+        ];
+
+        test_cases.iter().enumerate().for_each(|(i, tc)| {
+            assert_eq!(expecting[i], BitStr::from(*tc));
+        });
+    }
+
+    #[test]
+    fn bitstr_from_str_radix_10_num_45() {
         let bstr = BitStr::from_str_radix("45", 10);
 
         assert_eq!(BitStr::from("101101"), bstr);
+    }
+
+    #[test]
+    fn bitstr_from_str_radix_10_num_45_scale_1() {
+        let bstr = BitStr::from_str_radix("-4.5", 10);
+        let mut expecting = BitStr::from("101101");
+        expecting.sign = Sign::Negative;
+        expecting.scale = 1;
+
+        assert_eq!(expecting, bstr);
+    }
+
+    #[test]
+    fn bitstr_from_str_radix_10_num_5_scale_5() {
+        let bstr = BitStr::from_str_radix("0.00005", 10);
+        let mut expecting = BitStr::from("101");
+        expecting.scale = 5;
+
+        assert_eq!(expecting, bstr);
+    }
+
+    #[test]
+    fn bitstr_from_str_radix_10_num_max() {
+        let bstr = BitStr::from_str_radix("79_228_162_514_264_337_593_543_950_335", 10);
+
+        assert_eq!(
+            BitStr::from(format!("{}", "1".repeat(BitStr::LENGTH))),
+            bstr
+        );
+    }
+
+    #[test]
+    fn bitstr_all_zeroes_zeroes() {
+        assert_eq!(true, BitStr::default().all_zeroes())
+    }
+
+    #[test]
+    fn bitstr_all_zeroes_one() {
+        assert_eq!(
+            false,
+            BitStr::from(format!("1{}", "0".repeat(95))).all_zeroes()
+        )
+    }
+
+    #[test]
+    fn bitstr_all_ones_ones() {
+        let mut bstr = BitStr::default();
+        bstr.invert(BitStr::LENGTH);
+        assert_eq!(true, bstr.all_ones())
+    }
+
+    #[test]
+    fn bitstr_all_ones_zero() {
+        assert_eq!(
+            false,
+            BitStr::from(format!("0{}", "1".repeat(95))).all_ones()
+        )
     }
 
     #[test]
