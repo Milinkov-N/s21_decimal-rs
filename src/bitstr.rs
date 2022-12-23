@@ -1,3 +1,5 @@
+use crate::DecStr;
+
 use super::{get_bit, Bits, S21Decimal, Sign};
 
 const BITSTR_LEN: usize = 96;
@@ -163,7 +165,7 @@ impl BitStr {
         }
 
         left.sign = Sign::Positive;
-        let lbs_add_one = left + BitStr::from("1");
+        let lbs_add_one = left.add_upto(&BitStr::from("1"), BitStr::LENGTH);
         let sum = right.add_upto(&lbs_add_one, BitStr::LENGTH - right.msbi().unwrap());
 
         if !sum.all_zeroes() {
@@ -191,6 +193,13 @@ impl BitStr {
                 carry = 1;
             }
         });
+
+        if carry == 1 {
+            match (&self.sign, &rhs.sign) {
+                (Sign::Positive, Sign::Positive) => panic!("overflow"),
+                (_, _) => panic!("underflow"),
+            }
+        }
 
         if !result.all_zeroes() {
             result.scale = self.scale;
@@ -346,6 +355,16 @@ impl From<&BitStr> for String {
             acc.push(*byte as char);
             acc
         })
+    }
+}
+
+impl From<DecStr> for BitStr {
+    fn from(ds: DecStr) -> Self {
+        if ds.len() > 28 && ds.scale > 0 {
+            BitStr::from_str_radix(&ds.banker_round().to_string(), 10)
+        } else {
+            BitStr::from_str_radix(&ds.to_string(), 10)
+        }
     }
 }
 

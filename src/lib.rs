@@ -1,8 +1,10 @@
 use bits::*;
 pub use bitstr::*;
+pub use decstr::*;
 
 mod bits;
 mod bitstr;
+mod decstr;
 mod ops;
 
 const EXP_MASK: i32 = 0b00000000111111110000000000000000;

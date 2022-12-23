@@ -49,17 +49,6 @@ mod tests {
                 assert_eq!(S21Decimal::from_str_radix(stringify!($expect), 10), l + r);
             }
         };
-
-        ($(#[$attr:meta])? $name:ident { left: $lhs:literal, right: $rhs:literal, expect: $expect:expr }) => {
-            #[test]
-            $(#[$attr])?
-            fn $name() {
-                let l = S21Decimal::from_str_radix(stringify!($lhs), 10);
-                let r = S21Decimal::from_str_radix(stringify!($rhs), 10);
-
-                assert_eq!($expect, l + r);
-            }
-        };
     }
 
     #[test]
@@ -168,6 +157,24 @@ mod tests {
     );
 
     decimal_add_tc!(
+        #[should_panic = "overflow"]
+        decimal_add_with_overflow_left {
+            left: 79_228_162_514_264_337_593_543_950_000,
+            right: 400,
+            expect: 0
+        }
+    );
+
+    decimal_add_tc!(
+        #[should_panic = "overflow"]
+        decimal_add_with_overflow_right {
+            left: 400,
+            right: 79_228_162_514_264_337_593_543_950_000,
+            expect: 0
+        }
+    );
+
+    decimal_add_tc!(
         #[should_panic = "underflow"]
         decimal_add_left_min_right_neg_one {
             left: -79_228_162_514_264_337_593_543_950_335,
@@ -190,6 +197,24 @@ mod tests {
         decimal_add_left_neg_one_right_min {
             left: -1,
             right: -79_228_162_514_264_337_593_543_950_335,
+            expect: 0
+        }
+    );
+
+    decimal_add_tc!(
+        #[should_panic = "underflow"]
+        decimal_add_with_underflow_right {
+            left: -79_228_162_514_264_337_593_543_950_000,
+            right: -400,
+            expect: 0
+        }
+    );
+
+    decimal_add_tc!(
+        #[should_panic = "underflow"]
+        decimal_add_with_underflow_left {
+            left: -400,
+            right: -79_228_162_514_264_337_593_543_950_000,
             expect: 0
         }
     );

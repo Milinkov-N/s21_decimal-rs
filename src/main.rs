@@ -1,10 +1,12 @@
 use s21_decimal::*;
 
 fn main() {
-    let l = BitStr::from_str_radix("79_228_162_514_264_337_593_543_950_335", 10);
-    println!("{l:#?}");
-    println!("l is max {}", S21Decimal::from(l.clone()).is_max());
-    let r = BitStr::from_str_radix("-1", 10);
-    println!("{r:#?}");
-    println!("{:#?}", l + r);
+    let ds: DecStr = DecStr::from("79");
+    let ds2 = DecStr::from("1.6");
+    let sum = ds.add(&ds2);
+    // let bstr: BitStr = sum.clone().into();
+
+    println!("{}({})", sum, sum.scale);
+    // println!("rounded: {}", sum.banker_round());
+    // println!("bstr = {bstr:?}");
 }
